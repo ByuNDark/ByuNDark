@@ -1,10 +1,4 @@
-- 👋 Hi, I’m @ByuNDark
-- 👀 I’m interested in ...
-- 🌱 I’m currently learning ...
-- 💞️ I’m looking to collaborate on ...
-- 📫 How to reach me ...
+x 종합 : python 언어에 대한 모음집
+(x는 집합 X의 원소, X = {Pandas, Basic, Picture, Math, Random})
 
-<!---
-ByuNDark/ByuNDark is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
-You can click the Preview link to take a look at your changes.
---->
+그 외 : 이어드림스쿨(2022年 4月 ~ 2022年 12月)에서 했던 각종 활동들
