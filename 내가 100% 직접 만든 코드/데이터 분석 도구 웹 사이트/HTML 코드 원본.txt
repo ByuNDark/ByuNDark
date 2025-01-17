@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Match Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        .input-section {
+            margin: 20px 0;
+        }
+        img {
+            margin: 10px;
+            width: 150px;
+        }
+        .photo-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Player Match Data</h1>
+
+    <div>
+        <label for="matchesFile">Matches CSV에 해당되는 File을 여기에 등록해주세요.:</label>
+        <input type="file" id="matchesFile" accept=".csv" />
+        <br>
+        <label for="raceFile">Race CSV에 해당되는 File을 여기에 등록해주세요.:</label>
+        <input type="file" id="raceFile" accept=".csv" />
+        <br>
+        <label for="sexFile">Sex CSV에 해당되는 File을 여기에 등록해주세요.:</label>
+        <input type="file" id="sexFile" accept=".csv" />
+        <br>
+        <label for="photoFolder">Photo Folder를 여기에 등록해주세요(모든 파일 형식은 jpg).:</label>
+        <input type="file" id="photoFolder" webkitdirectory directory />
+        <br><br>
+        <button onclick="processFiles()">Process Files</button>
+    </div>
+
+    <div class="input-section">
+        <h2>SangDaeJunJuk</h2>
+        <label for="sangA">Player A:</label>
+        <input type="text" id="sangA" placeholder="Enter Player A" />
+        <label for="sangB">Player B:</label>
+        <input type="text" id="sangB" placeholder="Enter Player B" />
+        <button onclick="runSangDaeJunJuk()">Run</button>
+        <div id="sangPhotoOutput" class="photo-container"></div>
+        <div id="sangTableOutput"></div>
+    </div>
+
+    <div class="input-section">
+        <h2>MapData</h2>
+        <label for="mapName">Map Name:</label>
+        <input type="text" id="mapName" placeholder="Enter Map Name" />
+        <button onclick="runMapData()">Run</button>
+        <div id="mapTableOutput"></div>
+    </div>
+
+    <div class="input-section">
+        <h2>PlayerData</h2>
+        <label for="playerName">Player Name:</label>
+        <input type="text" id="playerName" placeholder="Enter Player Name" />
+        <button onclick="runPlayerData()">Run</button>
+        <div id="playerPhotoOutput" class="photo-container"></div>
+        <div id="playerTableOutput"></div>
+    </div>
+
+    <script>
+        let matches = [];
+        let race = [];
+        let sex = [];
+        let photoFolder = {};
+        let mainDataField = [];
+
+        function readCSV(file, callback) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const data = Papa.parse(reader.result, { header: true }).data;
+                callback(data);
+            };
+            reader.readAsText(file);
+        }
+
+        function processFiles() {
+            const matchesFile = document.getElementById('matchesFile').files[0];
+            const raceFile = document.getElementById('raceFile').files[0];
+            const sexFile = document.getElementById('sexFile').files[0];
+            const photoFiles = document.getElementById('photoFolder').files;
+
+            if (!matchesFile || !raceFile || !sexFile || !photoFiles.length) {
+                alert('Please select all required files and photo folder.');
+                return;
+            }
+
+            Array.from(photoFiles).forEach(file => {
+                photoFolder[file.name] = URL.createObjectURL(file);
+            });
+
+            readCSV(matchesFile, data => { matches = data; processMainDataField(); });
+            readCSV(raceFile, data => { race = data; processMainDataField(); });
+            readCSV(sexFile, data => { sex = data; processMainDataField(); });
+        }
+
+        function processMainDataField() {
+            if (!matches.length || !race.length || !sex.length) return;
+
+            mainDataField = matches.map(row => {
+                const winnerRace = race.find(r => r.Protoss === row.winner) ? 'Protoss' :
+                                   race.find(r => r.Terran === row.winner) ? 'Terran' : 'Zerg';
+                const winnerSex = sex.find(s => s.남성 === row.winner) ? '남성' : '여성';
+                const loserRace = race.find(r => r.Protoss === row.loser) ? 'Protoss' :
+                                  race.find(r => r.Terran === row.loser) ? 'Terran' : 'Zerg';
+                const loserSex = sex.find(s => s.남성 === row.loser) ? '남성' : '여성';
+
+                return {
+                    ...row,
+                    win_종족: winnerRace,
+                    win_성별: winnerSex,
+                    lose_종족: loserRace,
+                    lose_성별: loserSex
+                };
+            });
+
+            alert('Files processed successfully. 이제 아래 3가지 분석 도구를 이용할 수 있습니다.');
+        }
+
+        function SangDaeJunJuk(A, B) {
+            const results = [];
+            let a = 0, b = 0;
+
+            mainDataField.forEach(row => {
+                if (row.winner === A && row.loser === B) {
+                    results.push(row);
+                    a++;
+                } else if (row.winner === B && row.loser === A) {
+                    results.push(row);
+                    b++;
+                }
+            });
+
+            displayPhoto(A, 'sangPhotoOutput');
+            displayPhoto(B, 'sangPhotoOutput');
+            const countDiv = document.getElementById('sangPhotoOutput');
+            countDiv.insertAdjacentHTML('afterbegin', `<div>${A} ${a} : ${b} ${B}</div>`);
+
+            displayTable(results, 'sangTableOutput');
+        }
+
+        function MapData(C) {
+            const results = mainDataField.filter(row => row.map === C);
+            displayTable(results, 'mapTableOutput');
+        }
+
+        function PlayerData(D) {
+            const results = mainDataField.filter(row => row.winner === D || row.loser === D);
+            displayPhoto(D, 'playerPhotoOutput');
+            displayTable(results, 'playerTableOutput');
+        }
+
+        function displayPhoto(name, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            const photoSrc = photoFolder[`${name}.jpg`];
+            if (photoSrc) {
+                const img = document.createElement('img');
+                img.src = photoSrc;
+                img.alt = `Photo of ${name}`;
+                container.appendChild(img);
+            } else {
+                container.innerHTML = `<div>No photo available for ${name}</div>`;
+            }
+        }
+
+        function displayTable(data, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            if (!data.length) {
+                container.innerHTML = '<div>No data available</div>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            const headers = Object.keys(data[0]);
+
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.innerText = header;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.innerText = row[header];
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            container.appendChild(table);
+        }
+
+        function runSangDaeJunJuk() {
+            const A = document.getElementById('sangA').value;
+            const B = document.getElementById('sangB').value;
+            if (!A || !B) {
+                alert('Please enter both player names.');
+                return;
+            }
+            SangDaeJunJuk(A, B);
+        }
+
+        function runMapData() {
+            const mapName = document.getElementById('mapName').value;
+            if (!mapName) {
+                alert('Please enter a map name.');
+                return;
+            }
+            MapData(mapName);
+        }
+
+        function runPlayerData() {
+            const playerName = document.getElementById('playerName').value;
+            if (!playerName) {
+                alert('Please enter a player name.');
+                return;
+            }
+            PlayerData(playerName);
+        }
+    </script>
+</body>
+</html>
