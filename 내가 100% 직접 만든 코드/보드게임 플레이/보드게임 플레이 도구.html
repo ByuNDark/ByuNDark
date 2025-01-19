@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dice Game Functions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        .button-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            justify-content: center;
+        }
+        button {
+            padding: 20px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 15px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            font-size: 18px;
+            min-height: 50px;
+        }
+    </style>
+    <script>
+        function updateResult(result) {
+            document.getElementById("result").textContent = result;
+        }
+
+        // normal 랜덤 자원 득점
+        function normalScore(k) {
+            let T = [];
+            for (let i = 0; i < k; i++) {
+                T.push(Math.floor(Math.random() * 6) + 1);
+            }
+            const score = T.filter(x => x === 1).length + T.filter(x => x === 4).length;
+            updateResult(`주사위 결과: ${T.join(", ")}\n득점: ${score}`);
+        }
+
+        // weak 랜덤 자원 득점
+        function weakScore(k) {
+            let T = [];
+            for (let i = 0; i < k; i++) {
+                T.push(Math.floor(Math.random() * 6) + 1);
+            }
+            const score = T.filter(x => x === 1).length;
+            updateResult(`주사위 결과: ${T.join(", ")}\n득점: ${score}`);
+        }
+
+        // strong 랜덤 자원 득점
+        function strongScore(k) {
+            let T = [];
+            for (let i = 0; i < k; i++) {
+                T.push(Math.floor(Math.random() * 6) + 1);
+            }
+            const score = T.filter(x => x === 1).length + (2 * T.filter(x => x === 4).length);
+            updateResult(`주사위 결과: ${T.join(", ")}\n득점: ${score}`);
+        }
+
+        // 합
+        function summationDice(k) {
+            let T = [];
+            for (let i = 0; i < k; i++) {
+                T.push(Math.floor(Math.random() * 6) + 1);
+            }
+            const sum = T.reduce((sum, x) => sum + x, 0);
+            updateResult(`주사위 결과: ${T.join(", ")}\n합: ${sum}`);
+        }
+
+        // 주사위 몇 개 던지기
+        function diceDraw(k) {
+            let T = [];
+            for (let i = 0; i < k; i++) {
+                T.push(Math.floor(Math.random() * 6) + 1);
+            }
+            updateResult(`주사위 결과: ${T.join(", ")}`);
+        }
+
+        // target number
+        function targetNumber(a, b) {
+            let min = Math.min(a, b);
+            let max = Math.max(a, b);
+            const randomNum = Math.floor(Math.random() * (max - min + 1)) + min;
+            updateResult(`랜덤 숫자: ${randomNum}`);
+        }
+    </script>
+</head>
+<body>
+    <h1>Dice Game Functions</h1>
+    <p>아래 버튼을 클릭하여 각 기능을 테스트하세요.</p>
+
+    <div class="button-container">
+        <button onclick="normalScore(prompt('몇 개의 주사위를 던지겠습니까? (숫자 입력)'))">Normal Score</button>
+        <button onclick="weakScore(prompt('몇 개의 주사위를 던지겠습니까? (숫자 입력)'))">Weak Score</button>
+        <button onclick="strongScore(prompt('몇 개의 주사위를 던지겠습니까? (숫자 입력)'))">Strong Score</button>
+        <button onclick="summationDice(prompt('몇 개의 주사위를 던지겠습니까? (숫자 입력)'))">Summation Dice</button>
+        <button onclick="diceDraw(prompt('몇 개의 주사위를 던지겠습니까? (숫자 입력)'))">Dice Draw</button>
+        <button onclick="targetNumber(prompt('첫 번째 숫자를 입력하세요.'), prompt('두 번째 숫자를 입력하세요.'))">Target Number</button>
+    </div>
+
+    <div id="result">결과가 여기에 표시됩니다.</div>
+</body>
+</html>
