@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Player Match Data (개선판 v3)</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+  <style>
+    :root{
+      --gap: 14px;
+      --card-radius: 12px;
+      --border: #cfd3dc;
+      --muted: #6b7280;
+    }
+    body{font-family:Arial, sans-serif; margin:0; padding:16px; background:#fafafa;}
+    h1{margin:0 0 10px}
+    hr{margin:14px 0; border:none; border-top:1px solid #e5e7eb}
+
+    table{border-collapse:collapse;width:100%;margin:14px 0; background:#fff}
+    table,th,td{border:1px solid #000}
+    th,td{padding:8px;text-align:center}
+
+    .panel{
+      border:1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 12px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .panel h2{margin:0 0 10px; font-size:18px}
+    .help{color:var(--muted); font-size:12px; margin:6px 0 0}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    .row > div{display:flex; flex-direction:column; gap:4px}
+    label{font-size:13px}
+
+    /* 텍스트 입력칸 크기 및 스타일 조절 */
+    input[type="text"] {
+      width: 180px;       /* 입력칸의 너비 */
+      padding: 12px;       /* 입력칸 내부 여백 (높이 조절 효과) */
+      font-size: 15px;    /* 입력되는 글자 크기 */
+      box-sizing: border-box; /* 패딩을 포함하여 너비 계산 */
+      border: 1.2px solid var(--border); /* 테두리 색상 */
+      border-radius: 0px; /* 테두리 둥글기 */
+    }
+
+    .photo-container{display:flex;justify-content:center;align-items:center;gap:16px;margin:10px 0; flex-wrap:wrap}
+    img{margin:10px;width:150px; height:auto; border-radius:10px; border:1px solid #eee; }
+    .match-stats{font-size:18px;text-align:center; line-height:1.35}
+    .big-num{font-size:22px;font-weight:bold}
+    .side-info{min-width:180px;white-space:pre-line;text-align:right}
+    .side-info.right{text-align:left}
+
+    .grid-3x3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+    .stat-card{border:1px solid #aaa;border-radius:10px;padding:12px;text-align:center}
+    .stat-title{font-weight:bold;margin-bottom:6px}
+
+    /* ===== 2행 3열(총 6개) ===== */
+    .tools-grid{display:grid; grid-template-columns:repeat(3,1fr); gap: var(--gap); margin-top: var(--gap);}
+    @media (max-width: 1100px){
+      .tools-grid{grid-template-columns:1fr;}
+    }
+
+    .scroll-box{max-height:520px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; padding:0 10px; background:#fff}
+    .status{margin-top:8px; font-size:13px; color:#111827}
+    .status .muted{color:var(--muted)}
+    .pill{display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; background:#f3f4f6; border:1px solid #e5e7eb}
+    .btn{cursor:pointer; padding:6px 10px; border-radius:10px; border:1px solid #d1d5db; background:#fff}
+    .btn:hover{background:#f9fafb}
+
+    /* ===== 결과 글자 크기(조금 축소) ===== */
+    #sangPhotoOutput, #sangTableOutput,
+    #playerPhotoOutput, #playerTableOutput,
+    #lastTenPhotoOutput, #lastTenTableOutput,
+    #mapPlayerPhotoOutput, #mapPlayerTableOutput{
+      font-size:13px;
+      line-height:1.35;
+    }
+    #sangTableOutput table, #lastTenTableOutput table, #mapPlayerTableOutput table{
+      font-size:13px;
+    }
+    #playerTableOutput table{
+      font-size:11.5px;
+    }
+    #sangPhotoOutput .match-stats{font-size:16px;}
+    #sangPhotoOutput .big-num,
+    #playerPhotoOutput .big-num,
+    #lastTenPhotoOutput .big-num,
+    #mapPlayerPhotoOutput .big-num{font-size:20px;}
+    #playerPhotoOutput .side-info,
+    #mapPlayerPhotoOutput .side-info{font-size:14px;}
+
+  </style>
+</head>
+<body>
+  <h1>Player Match Data</h1>
+
+  <!-- (1) INU 폴더 자동 실행으로 통합 -->
+  <div class="panel">
+    <h2>INU 폴더 자동 실행</h2>
+    <p style="margin:6px 0 10px;">
+      INU 폴더(아래 구조)를 선택하면 <b>matches.csv 생성 → arrows/visions 로드 → 분석 준비 완료</b>가 자동 실행됩니다.
+      <br/>구조 예) INU/
+      <code>data1.csv ~ data9.csv, race.csv, sex.csv, arrows/, visions/</code>
+    </p>
+
+    <div class="row">
+      <div>
+        <label for="inuFolder">INU 폴더 선택</label>
+        <input type="file" id="inuFolder" webkitdirectory directory />
+      </div>
+
+      <div>
+        <label for="levelWeightFile">대회 레벨 가중치 CSV (선택 사항)</label>
+        <input type="file" id="levelWeightFile" accept=".csv"/>
+        <div class="help">미선택 시: INU 폴더 내 CSV를 자동 탐색 → 없으면 1.0</div>
+      </div>
+
+      <div>
+        <label for="stageWeightFile">중요도(스테이지) 가중치 CSV (선택 사항)</label>
+        <input type="file" id="stageWeightFile" accept=".csv"/>
+        <div class="help">미선택 시: INU 폴더 내 CSV를 자동 탐색 → 없으면 1.0</div>
+      </div>
+    </div>
+
+    <div id="status" class="status">
+      <span class="pill">대기</span>
+      <span class="muted">INU 폴더를 선택하면 자동으로 로드됩니다.</span>
+    </div>
+
+    <div id="matchesDownload" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- (4) 2행 3열 배치 (SangDaeJunJuk, PlayerData, MapData / PlayerLastTen, MapAndPlayer, WinningProbability) -->
+  <div class="tools-grid">
+    <div class="panel" id="panel-sang">
+      <h2>SangDaeJunJuk</h2>
+      <label for="sangA">Player A:</label>
+      <input type="text" id="sangA" placeholder="Enter Player A"/>
+      <label for="sangB">Player B:</label>
+      <input type="text" id="sangB" placeholder="Enter Player B"/>
+      <button class="btn" onclick="runSangDaeJunJuk()">Run</button>
+      <div id="sangPhotoOutput" class="photo-container"></div>
+      <div id="sangTableOutput"></div>
+    </div>
+
+    <div class="panel" id="panel-player">
+      <h2>PlayerData</h2>
+      <label for="playerName">Player Name:</label>
+      <input type="text" id="playerName" placeholder="Enter Player Name"/>
+      <button class="btn" onclick="runPlayerData()">Run</button>
+      <div id="playerPhotoOutput" class="photo-container"></div>
+      <div id="playerTableOutput"></div>
+    </div>
+
+    <div class="panel" id="panel-map">
+      <h2>MapData</h2>
+      <label for="mapName">Map Name:</label>
+      <input type="text" id="mapName" placeholder="Enter Map Name"/>
+      <button class="btn" onclick="runMapData()">Run</button>
+      <div id="mapGridOutput"></div>
+    </div>
+
+    <div class="panel" id="panel-lastten">
+      <h2>PlayerLastTen</h2>
+      <label for="lastTenName">Player Name:</label>
+      <input type="text" id="lastTenName" placeholder="Enter Player Name"/>
+      <button class="btn" onclick="runPlayerLastTen()">Run</button>
+      <div id="lastTenPhotoOutput" class="photo-container"></div>
+      <div id="lastTenTableOutput"></div>
+    </div>
+
+    <div class="panel" id="panel-map-player">
+      <h2>MapAndPlayer</h2>
+      <label for="mapPlayerName">Player Name:</label>
+      <input type="text" id="mapPlayerName" placeholder="Enter Player Name"/>
+      <label for="mapPlayerMap">Map Name:</label>
+      <input type="text" id="mapPlayerMap" placeholder="Enter Map Name"/>
+      <button class="btn" onclick="runMapAndPlayer()">Run</button>
+      <div id="mapPlayerPhotoOutput" class="photo-container"></div>
+      <div id="mapPlayerTableOutput"></div>
+    </div>
+
+    <div class="panel" id="panel-winprob">
+      <h2>WinningProbability</h2>
+      <label for="winA">Player A:</label>
+      <input type="text" id="winA" placeholder="Enter Player A"/>
+      <label for="winB">Player B:</label>
+      <input type="text" id="winB" placeholder="Enter Player B"/>
+      <label for="winMap">Map Name:</label>
+      <input type="text" id="winMap" placeholder="Enter Map Name"/>
+      <button class="btn" onclick="runWinningProbability()">Run</button>
+      <div id="winProbOutput" class="photo-container"></div>
+    </div>
+  </div>
+
+  <!-- (2) Elo 레이팅 전체 출력 (페이지 최하단, 스크롤 박스) -->
+  <div class="panel" style="margin-top: var(--gap);">
+    <h2>Elo 레이팅 순위 (가중치 버전) & 통산 승률 (20경기 이상)</h2>
+    <div class="help">
+      Elo: 초기 1500, 기대승률 E = 1/(1+10^((Ropp - R)/400)),
+      업데이트: 승자 R ← R + K(1−E), 패자 R ← R − K(1−E),
+      K = 24 × (대회_레벨 가중치) × (중요도 가중치)
+    </div>
+    <div class="scroll-box" style="margin-top:10px;">
+      <div id="eloTableOutput" style="padding:10px 0;"></div>
+    </div>
+  </div>
+
+  <script>
+    // ---------------- 상태/전역 ----------------
+    let matches = [], race = [], sex = [];
+    let photoFolder = {};     // visions/
+    let iconFolder = {};      // arrows/
+    let mainDataField = [];
+
+    let levelWeightMap = new Map(); // key: 대회_레벨 -> weight
+    let stageWeightMap = new Map(); // key: 중요도 -> weight
+
+    let eloResult = null; // {ratings, list, rank}
+
+    function setStatus(text, kind='ready'){
+      const el = document.getElementById('status');
+      const pill = kind==='ready' ? '완료' : kind==='loading' ? '로딩' : kind==='error' ? '오류' : '대기';
+      el.innerHTML = `<span class="pill">${pill}</span> ${text}`;
+    }
+
+    // ---------------- 공통 유틸 ----------------
+    function normalize(s){ return (s ?? '').toString().trim(); }
+    function countWhere(arr, pred){ let c=0; for(const r of arr){ if(pred(r)) c++; } return c; }
+    function pct(w,l){ const t=w+l; return t? ( (w*100/t).toFixed(1)+'%' ): '0.0%'; }
+
+    function loadFolderToMap(fileList, targetMap){
+      targetMap = targetMap || {};
+      Array.from(fileList).forEach(f => targetMap[f.name] = URL.createObjectURL(f));
+      return targetMap;
+    }
+
+    function readFileAsText(file){
+      return new Promise((resolve,reject)=>{
+        const r=new FileReader();
+        r.onload=()=>resolve(r.result);
+        r.onerror=reject;
+        r.readAsText(file);
+      });
+    }
+
+    async function parseCsvFile(file){
+      const text = await readFileAsText(file);
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      // 빈 행 제거
+      return (parsed.data || []).filter(row => Object.keys(row).some(k => row[k] !== null && row[k] !== ''));
+    }
+
+    function pickByPathPrefix(fileList, prefix){
+      return Array.from(fileList).filter(f => (f.webkitRelativePath || f.name).includes('/' + prefix + '/'));
+    }
+    function pickByExactName(fileList, name){
+      const low = name.toLowerCase();
+      return Array.from(fileList).find(f => (f.name.toLowerCase() === low));
+    }
+    function pickDataCsvs(fileList){
+      const names = new Set(Array.from({length:9},(_,i)=>`data${i+1}.csv`));
+      return Array.from(fileList).filter(f => names.has(f.name.toLowerCase()));
+    }
+    function sortDataCsvs(files){
+      const getN = f => {
+        const m = (f.name||'').toLowerCase().match(/^data(\d+)\.csv$/);
+        return m ? parseInt(m[1],10) : 999;
+      };
+      return Array.from(files).sort((a,b)=>getN(a)-getN(b));
+    }
+
+    function unifyHeaders(rows){
+      const headers = new Set();
+      rows.forEach(r => Object.keys(r || {}).forEach(h => headers.add(h)));
+      return Array.from(headers);
+    }
+
+    function buildMatchesCsvText(rows){
+      const headers = unifyHeaders(rows);
+      return Papa.unparse(rows, { columns: headers });
+    }
+
+    function showMatchesDownload(csvText){
+      const host = document.getElementById('matchesDownload');
+      host.innerHTML = '';
+      try{
+        const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'matches.csv';
+        a.textContent = '생성된 matches.csv 다운로드';
+        a.className = 'btn';
+        host.appendChild(a);
+      }catch(e){ /* ignore */ }
+    }
+
+    // ---------------- (가중치 CSV 로드) ----------------
+    async function loadWeightCsv(file, keyCol, valCol){
+      const rows = await parseCsvFile(file);
+      const m = new Map();
+      for(const r of rows){
+        const k = normalize(r[keyCol]);
+        const v = parseFloat(r[valCol]);
+        if(!k || Number.isNaN(v)) continue;
+        m.set(k, v);
+      }
+      return m;
+    }
+
+    function findWeightCsvInINU(allFiles, kind){
+      // kind: "level" | "stage"
+      const csvs = Array.from(allFiles).filter(f => (f.name||'').toLowerCase().endsWith('.csv'));
+
+      if(kind === 'level'){
+        // 1) 정확한 파일명 우선
+        let f = pickByExactName(allFiles, '대회 레벨 가중치.csv');
+        if(f) return f;
+
+        // 2) 포함 키워드로 탐색
+        f = csvs.find(x => x.name.includes('대회') && x.name.includes('레벨') && x.name.includes('가중치'));
+        return f || null;
+      }
+
+      if(kind === 'stage'){
+        let f = pickByExactName(allFiles, '중요도(스테이지) 가중치.csv');
+        if(f) return f;
+
+        f = csvs.find(x => x.name.includes('중요도') && x.name.includes('가중치'));
+        return f || null;
+      }
+
+      return null;
+    }
+
+    async function loadWeightsAuto(allFiles){
+      // 수동 선택이 있으면 우선 사용, 없으면 INU 폴더 내 가중치 CSV 자동 탐색
+      const levelManual = document.getElementById('levelWeightFile').files[0] || null;
+      const stageManual = document.getElementById('stageWeightFile').files[0] || null;
+
+      const levelAuto = levelManual ? null : findWeightCsvInINU(allFiles, 'level');
+      const stageAuto = stageManual ? null : findWeightCsvInINU(allFiles, 'stage');
+
+      const chosenLevel = levelManual || levelAuto;
+      const chosenStage = stageManual || stageAuto;
+
+      if(chosenLevel){
+        levelWeightMap = await loadWeightCsv(chosenLevel, '대회_레벨', '가중치');
+      }else{
+        levelWeightMap = new Map();
+      }
+
+      if(chosenStage){
+        stageWeightMap = await loadWeightCsv(chosenStage, '중요도', '가중치');
+      }else{
+        stageWeightMap = new Map();
+      }
+
+      const msgs = [];
+      if(chosenLevel){
+        msgs.push(`대회 레벨 가중치 로드: <b>${chosenLevel.name}</b> ${levelManual ? '(수동 선택)' : '(INU 자동)'} — ${levelWeightMap.size}개`);
+      }else{
+        msgs.push('대회 레벨 가중치: 기본값 1.0');
+      }
+
+      if(chosenStage){
+        msgs.push(`중요도 가중치 로드: <b>${chosenStage.name}</b> ${stageManual ? '(수동 선택)' : '(INU 자동)'} — ${stageWeightMap.size}개`);
+      }else{
+        msgs.push('중요도 가중치: 기본값 1.0');
+      }
+
+      return msgs.join('<br/>');
+    }
+
+    async function onWeightChange(){
+      try{
+        // 수동 파일이 바뀌면 즉시 반영 (INU 자동 탐색은 INU 로드 시 수행)
+        const levelFile = document.getElementById('levelWeightFile').files[0];
+        const stageFile = document.getElementById('stageWeightFile').files[0];
+
+        if(levelFile){
+          levelWeightMap = await loadWeightCsv(levelFile, '대회_레벨', '가중치');
+        }else{
+          levelWeightMap = new Map();
+        }
+        if(stageFile){
+          stageWeightMap = await loadWeightCsv(stageFile, '중요도', '가중치');
+        }else{
+          stageWeightMap = new Map();
+        }
+
+        if(mainDataField.length){
+          computeAndRenderElo();
+        }
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    // ---------------- (1) INU 자동 실행 ----------------
+    async function autoFromINU(){
+      const inuInput = document.getElementById('inuFolder');
+      const allFiles = inuInput.files;
+
+      if(!allFiles || !allFiles.length){
+        setStatus('INU 폴더를 선택해주세요.', 'idle');
+        return;
+      }
+
+      setStatus('INU 폴더를 분석 중입니다...', 'loading');
+
+      // reset
+      matches = []; race = []; sex = []; mainDataField = [];
+      photoFolder = {}; iconFolder = {};
+      eloResult = null;
+      document.getElementById('eloTableOutput').innerHTML = '';
+      document.getElementById('matchesDownload').innerHTML = '';
+      clearOutputs();
+
+      const dataFiles = sortDataCsvs(pickDataCsvs(allFiles));
+      const raceFile  = pickByExactName(allFiles,'race.csv');
+      const sexFile   = pickByExactName(allFiles,'sex.csv');
+      const arrows    = pickByPathPrefix(allFiles,'arrows');
+      const visions   = pickByPathPrefix(allFiles,'visions');
+
+      const missing = [];
+      if(dataFiles.length < 1) missing.push('data1~9.csv');
+      if(!raceFile) missing.push('race.csv');
+      if(!sexFile)  missing.push('sex.csv');
+      if(visions.length < 1) missing.push('visions/ (선수 사진 폴더)');
+      if(arrows.length < 1)  missing.push('arrows/ (아이콘/화살표 폴더)');
+      if(missing.length){
+        setStatus('INU 폴더에서 다음 항목을 찾지 못했습니다:<br/>- ' + missing.join('<br/>- '), 'error');
+        return;
+      }
+
+      try{
+        const allRows = [];
+        for(const f of dataFiles){
+          const rows = await parseCsvFile(f);
+          allRows.push(...rows);
+        }
+        matches = allRows;
+        race = await parseCsvFile(raceFile);
+        sex  = await parseCsvFile(sexFile);
+
+        photoFolder = loadFolderToMap(visions, photoFolder);
+        iconFolder  = loadFolderToMap(arrows,  iconFolder);
+
+        processMainDataField();
+        showMatchesDownload(buildMatchesCsvText(matches));
+
+        // ✅ INU 폴더 내 가중치 CSV 자동 탐색/로드 (수동 선택이 있으면 우선)
+        const weightMsg = await loadWeightsAuto(allFiles);
+
+        // (2) Elo 산출 + 출력
+        computeAndRenderElo();
+
+        setStatus(
+          'Files processed successfully. 이제 아래 6가지 분석 도구를 이용할 수 있습니다.' +
+          `<div class="muted" style="margin-top:6px;">${weightMsg}</div>`
+        , 'ready');
+      }catch(err){
+        console.error(err);
+        setStatus('파일 처리 중 오류가 발생했습니다. 콘솔을 확인해주세요.', 'error');
+      }
+    }
+
+    function clearOutputs(){
+      const ids = [
+        'sangPhotoOutput','sangTableOutput',
+        'playerPhotoOutput','playerTableOutput',
+        'mapGridOutput',
+        'lastTenPhotoOutput','lastTenTableOutput',
+        'mapPlayerPhotoOutput','mapPlayerTableOutput',
+        'winProbOutput'
+      ];
+      ids.forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.innerHTML = '';
+      });
+    }
+
+    // ---------------- mainDataField 구성 ----------------
+    function processMainDataField(){
+      if(!matches.length || !race.length || !sex.length) return;
+
+      const raceHas = (col, name) => race.some(r => normalize(r[col]) === normalize(name));
+      const sexHas  = (col, name) => sex.some(s => normalize(s[col]) === normalize(name));
+
+      mainDataField = matches.map(row => {
+        const winner = normalize(row.winner);
+        const loser  = normalize(row.loser);
+
+        const winnerRace =
+          (raceHas('Protoss', winner) ? 'Protoss' :
+           raceHas('Terran',  winner) ? 'Terran'  : 'Zerg');
+        const loserRace  =
+          (raceHas('Protoss', loser)  ? 'Protoss' :
+           raceHas('Terran',  loser)  ? 'Terran'  : 'Zerg');
+
+        const winnerSex = (sexHas('남성', winner) ? '남성' : '여성');
+        const loserSex  = (sexHas('남성', loser)  ? '남성' : '여성');
+
+        return {
+          winner, win_종족: winnerRace, win_성별: winnerSex,
+          loser,  lose_종족: loserRace,  lose_성별: loserSex,
+          map: normalize(row.map),
+          리마스터: normalize(row.리마스터),
+          방식: normalize(row.방식),
+          대회_레벨: normalize(row.대회_레벨),
+          대회_이름: normalize(row.대회_이름),
+          중요도: normalize(row.중요도),
+          진행: normalize(row.진행),
+          세트: normalize(row.세트)
+        };
+      }).filter(r => r.winner && r.loser);
+    }
+
+    // ---------------- (2) Elo 계산/렌더 ----------------
+    function getWeight(map, key){
+      const k = normalize(key);
+      if(!k) return 1.0;
+      return map.has(k) ? map.get(k) : 1.0;
+    }
+
+    function computeElo(){
+      if(!mainDataField.length) return null;
+
+      const ratings = new Map();
+      const getR = (p) => { if(!ratings.has(p)) ratings.set(p, 1500); return ratings.get(p); };
+      const setR = (p,v) => ratings.set(p, v);
+
+      for(const m of mainDataField){
+        const w = m.winner, l = m.loser;
+        const Rw = getR(w), Rl = getR(l);
+        const E  = 1 / (1 + Math.pow(10, (Rl - Rw) / 400));
+
+        const lw = getWeight(levelWeightMap, m.대회_레벨);
+        const sw = getWeight(stageWeightMap, m.중요도);
+        const K  = 24 * lw * sw;
+
+        const delta = K * (1 - E);
+        setR(w, Rw + delta);
+        setR(l, Rl - delta);
+      }
+
+      const list = Array.from(ratings.entries()).map(([player, rating]) => ({ player, rating }));
+      list.sort((a,b)=>b.rating-a.rating);
+
+      const rank = new Map();
+      list.forEach((d,i)=>rank.set(d.player, i+1));
+
+      return { ratings, list, rank };
+    }
+
+function renderEloTable(res){
+  const out = document.getElementById('eloTableOutput');
+  out.innerHTML = '';
+  
+  if(!res || !res.list.length){
+    out.innerHTML = '<div class="muted">Elo를 계산할 데이터가 없습니다.</div>';
+    return;
+  }
+
+  // ===== 1. 통산 승률 데이터 계산 =====
+  const stats = new Map();
+  const getStat = (p) => {
+    if(!stats.has(p)) stats.set(p, { w: 0, l: 0 });
+    return stats.get(p);
+  };
+  
+  for(const m of mainDataField){
+    getStat(m.winner).w++;
+    getStat(m.loser).l++;
+  }
+
+  const winRateData = Array.from(stats.entries()).map(([player, data]) => {
+    const total = data.w + data.l;
+    const rate = total > 0 ? (data.w / total * 100) : 0;
+    return { player, w: data.w, l: data.l, total, rate };
+  });
+
+  const over20 = winRateData.filter(d => d.total >= 20).sort((a,b) => b.rate - a.rate || b.w - a.w);
+  const under20 = winRateData.filter(d => d.total < 20).sort((a,b) => b.rate - a.rate || b.w - a.w);
+
+  const winRateList = [];
+  over20.forEach((d, i) => {
+    winRateList.push({ rank: i + 1, player: d.player, rateStr: d.rate.toFixed(1) + '%' });
+  });
+  under20.forEach(d => {
+    winRateList.push({
+      rank: '<span style="font-size:11px; white-space:nowrap; letter-spacing:-0.5px;">규정타석/이닝 미달</span>',
+      player: d.player, rateStr: d.rate.toFixed(1) + '%'
+    });
+  });
+
+  // ===== 1-5. 에결 통산 전적 데이터 계산 (추가 부분) =====
+  const aceStats = new Map();
+  const getAceStat = (p) => {
+    if(!aceStats.has(p)) aceStats.set(p, { w: 0, l: 0 });
+    return aceStats.get(p);
+  };
+  
+  for(const m of mainDataField){
+    // 세트가 ACE결정전인 경우만 수집
+    if(m.세트 === 'ACE결정전'){
+      getAceStat(m.winner).w++;
+      getAceStat(m.loser).l++;
+    }
+  }
+
+  const aceData = Array.from(aceStats.entries()).map(([player, data]) => {
+    const total = data.w + data.l;
+    const rate = total > 0 ? (data.w / total * 100) : 0;
+    return { player, w: data.w, l: data.l, total, rate };
+  }).filter(d => d.total > 0); // 에결 경기가 있는 선수만
+
+  // 승수 기준 정렬 (동률시 승률, 그다음 다승)
+  aceData.sort((a,b) => b.w - a.w || b.rate - a.rate || b.total - a.total);
+
+  const aceList = aceData.map((d, i) => {
+    return {
+      rank: i + 1,
+      player: d.player,
+      rateStr: `${d.w}승 (${d.rate.toFixed(1)}%)`
+    };
+  });
+
+  // ===== 2. 테이블 렌더링 =====
+  const table = document.createElement('table');
+  table.style.width = '100%';
+  table.style.borderCollapse = 'collapse';
+  table.style.textAlign = 'center';
+  const thead = document.createElement('thead');
+  
+  // 상단 대분류 헤더 (에결 통산 전적 추가)
+  const trGroup = document.createElement('tr');
+  trGroup.innerHTML = `
+    <th colspan="3" style="border-right: 2px solid #000; background-color: #f9fafb;">Elo 레이팅</th>
+    <th colspan="3" style="border-right: 2px solid #000; background-color: #f9fafb;">통산 승률</th>
+    <th colspan="3" style="background-color: #f9fafb;">에결 통산 전적</th>
+  `;
+  thead.appendChild(trGroup);
+
+  // 하단 소분류 헤더
+  const trCols = document.createElement('tr');
+  trCols.innerHTML = `
+    <th>순위</th><th>이름</th><th style="border-right: 2px solid #000;">Elo 값</th>
+    <th>순위</th><th>이름</th><th style="border-right: 2px solid #000;">승률</th>
+    <th>순위</th><th>이름</th><th>승수(승률)</th>
+  `;
+  thead.appendChild(trCols);
+  table.appendChild(thead);
+  
+  const tbody = document.createElement('tbody');
+  
+  const eloList = res.list;
+  // 세 항목 중 가장 긴 줄에 맞춰 반복
+  const maxRows = Math.max(eloList.length, winRateList.length, aceList.length);
+  
+  for(let i=0; i<maxRows; i++){
+    const tr = document.createElement('tr');
+    
+    // 왼쪽: Elo 레이팅
+    if(i < eloList.length){
+      const e = eloList[i];
+      const eloVal = (Math.round(e.rating * 10) / 10).toFixed(1);
+      tr.innerHTML += `
+        <td>${i + 1}</td>
+        <td>${e.player}</td>
+        <td style="border-right: 2px solid #000;">${eloVal}</td>
+      `;
+    } else {
+      tr.innerHTML += `<td></td><td></td><td style="border-right: 2px solid #000;"></td>`;
+    }
+
+    // 가운데: 통산 승률
+    if(i < winRateList.length){
+      const w = winRateList[i];
+      tr.innerHTML += `
+        <td>${w.rank}</td>
+        <td>${w.player}</td>
+        <td style="border-right: 2px solid #000;">${w.rateStr}</td>
+      `;
+    } else {
+      tr.innerHTML += `<td></td><td></td><td style="border-right: 2px solid #000;"></td>`;
+    }
+
+    // 오른쪽: 에결 통산 전적 (추가 파트)
+    if(i < aceList.length){
+      const a = aceList[i];
+      tr.innerHTML += `
+        <td>${a.rank}</td>
+        <td>${a.player}</td>
+        <td>${a.rateStr}</td>
+      `;
+    } else {
+      tr.innerHTML += `<td></td><td></td><td></td>`;
+    }
+    
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  out.appendChild(table);
+}
+
+    function computeAndRenderElo(){
+      eloResult = computeElo();
+      renderEloTable(eloResult);
+    }
+
+    // ---------------- 기존 기능들 ----------------
+    function displayPhoto(name, container, clear=true){
+      if(clear) container.innerHTML='';
+      const src = photoFolder[`${name}.jpg`];
+      if(src){
+        const img=document.createElement('img');
+        img.src=src; img.alt=`Photo of ${name}`;
+        container.appendChild(img);
+      }else{
+        const div = document.createElement('div');
+        div.textContent = `No photo available for ${name}`;
+        container.appendChild(div);
+      }
+    }
+
+    function displayTable(data, containerId){
+      const container=document.getElementById(containerId);
+      container.innerHTML='';
+      if(!data.length){ container.innerHTML='<div>No data available</div>'; return; }
+
+      const table=document.createElement('table');
+      const headers=Object.keys(data[0]);
+      const thead=document.createElement('thead');
+      const headerRow=document.createElement('tr');
+      headers.forEach(h=>{ const th=document.createElement('th'); th.innerText=h; headerRow.appendChild(th); });
+      thead.appendChild(headerRow); table.appendChild(thead);
+
+      const tbody=document.createElement('tbody');
+      data.forEach(row=>{
+        const tr=document.createElement('tr');
+        headers.forEach(h=>{ const td=document.createElement('td'); td.innerText=row[h]; tr.appendChild(td); });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    function displayPhotoWithSides(name, containerId, leftHTML, rightHTML){
+      const container=document.getElementById(containerId);
+      container.innerHTML='';
+      container.classList.add('photo-container');
+
+      const left = document.createElement('div');
+      left.className='side-info';
+      left.innerHTML=leftHTML;
+
+      const photoWrap = document.createElement('div');
+      photoWrap.style.textAlign = 'center';
+      displayPhoto(name, photoWrap, true);
+
+      const right = document.createElement('div');
+      right.className='side-info right';
+      right.innerHTML=rightHTML;
+
+      container.append(left, photoWrap, right);
+    }
+
+    function SangDaeJunJuk(A,B){
+      const results=[]; let a=0,b=0;
+      mainDataField.forEach(row=>{
+        if(row.winner===A && row.loser===B){ results.push(row); a++; }
+        else if(row.winner===B && row.loser===A){ results.push(row); b++; }
+      });
+
+      const photoOutput=document.getElementById('sangPhotoOutput');
+      photoOutput.innerHTML='';
+      photoOutput.classList.add('photo-container');
+
+      displayPhoto(A, photoOutput, false);
+
+      const statsDiv=document.createElement('div');
+      statsDiv.className='match-stats';
+      statsDiv.innerHTML=`<div class="big-num">${A} ${a} : ${b} ${B}</div>`;
+      photoOutput.appendChild(statsDiv);
+
+      displayPhoto(B, photoOutput, false);
+
+      displayTable(results,'sangTableOutput');
+
+      const sangTable = document.getElementById('sangTableOutput');
+      if(results.length >= 8){
+        sangTable.style.maxHeight = '600px';
+        sangTable.style.overflowY = 'auto';
+      }else{
+        sangTable.style.maxHeight = '';
+        sangTable.style.overflowY = '';
+      }
+    }
+
+    function MapData(C){
+      const rows = mainDataField.filter(r=>r.map===C);
+      const out = document.getElementById('mapGridOutput');
+      out.innerHTML='';
+
+      if(!rows.length){ out.innerHTML='<div>No data available</div>'; return; }
+
+      const pMirror = countWhere(rows, r=>r.win_종족==='Protoss'&&r.lose_종족==='Protoss');
+      const tMirror = countWhere(rows, r=>r.win_종족==='Terran' &&r.lose_종족==='Terran');
+      const zMirror = countWhere(rows, r=>r.win_종족==='Zerg'   &&r.lose_종족==='Zerg');
+
+      const mSame   = countWhere(rows, r=>r.win_성별==='남성' && r.lose_성별==='남성');
+      const fSame   = countWhere(rows, r=>r.win_성별==='여성' && r.lose_성별==='여성');
+
+      const rec = (aCond,bCond) => {
+        const a = countWhere(rows, aCond);
+        const b = countWhere(rows, bCond);
+        return `${a} : ${b}`;
+      };
+      const pt = rec(r=>r.win_종족==='Protoss'&&r.lose_종족==='Terran',
+                     r=>r.win_종족==='Terran' &&r.lose_종족==='Protoss');
+      const tz = rec(r=>r.win_종족==='Terran' &&r.lose_종족==='Zerg',
+                     r=>r.win_종족==='Zerg'   &&r.lose_종족==='Terran');
+      const pz = rec(r=>r.win_종족==='Protoss'&&r.lose_종족==='Zerg',
+                     r=>r.win_종족==='Zerg'   &&r.lose_종족==='Protoss');
+      const mf = rec(r=>r.win_성별==='남성' && r.lose_성별==='여성',
+                     r=>r.win_성별==='여성' && r.lose_성별==='남성');
+
+      const items = [
+        {t:'Protoss 동족전', v:pMirror},
+        {t:'Terran 동족전',  v:tMirror},
+        {t:'Zerg 동족전',    v:zMirror},
+        {t:'남성 동성전',    v:mSame},
+        {t:'여성 동성전',    v:fSame},
+        {t:'남성 vs 여성',   v:mf},
+        {t:'P vs T',         v:pt},
+        {t:'T vs Z',         v:tz},
+        {t:'P vs Z',         v:pz},
+      ];
+
+      const grid=document.createElement('div'); grid.className='grid-3x3';
+      items.forEach(({t,v})=>{
+        const card=document.createElement('div'); card.className='stat-card';
+        card.innerHTML=`<div class="stat-title">${t}</div><div class="big-num">${v}</div>`;
+        grid.appendChild(card);
+      });
+      out.appendChild(grid);
+    }
+
+    function PlayerData(D){
+      const rows = mainDataField.filter(r=>r.winner===D||r.loser===D);
+
+      const isTeam = r => (r.방식||'').includes('팀');
+      const isIndv = r => (r.방식||'').includes('개인');
+      const includesAny = (text, keys) => {
+        const t = (text||'')+'';
+        return keys.some(k => t.includes(k));
+      };
+
+      const totalWL = (filterFn) => {
+        let w=0,l=0;
+        for(const r of rows){
+          if(filterFn && !filterFn(r)) continue;
+          if(r.winner===D) w++;
+          else if(r.loser===D) l++;
+        }
+        return {w,l,p:pct(w,l)};
+      };
+
+      const teamAll   = totalWL(isTeam);
+      const indvAll   = totalWL(isIndv);
+
+      const teamPro   = totalWL(r => isTeam(r) && r.대회_레벨 === '프로리그');
+      const teamCup   = totalWL(r => isTeam(r) && r.대회_레벨 === '컵 대회');
+      const teamGroup = totalWL(r => isTeam(r) && r.대회_레벨 === '그룹퍼');
+      const indvMajor = totalWL(r => isIndv(r) && r.대회_레벨 === '메이저');
+      const indvMinor = totalWL(r => isIndv(r) && r.대회_레벨 === '마이너');
+      const indvWorlz = totalWL(r => isIndv(r) && r.대회_레벨 === '월즈');
+
+      const leftHTML =
+        `팀리그 전체  ${teamAll.w}승 ${teamAll.l}패  (승률 ${teamAll.p})\n` +
+        `개인리그 전체  ${indvAll.w}승 ${indvAll.l}패  (승률 ${indvAll.p})\n` +
+        `팀리그 프로리그  ${teamPro.w}승 ${teamPro.l}패  (승률 ${teamPro.p})\n` +
+        `팀리그 컵대회    ${teamCup.w}승 ${teamCup.l}패  (승률 ${teamCup.p})\n` +
+        `팀리그 그룹퍼    ${teamGroup.w}승 ${teamGroup.l}패  (승률 ${teamGroup.p})\n` +
+        `개인리그 메이저  ${indvMajor.w}승 ${indvMajor.l}패  (승률 ${indvMajor.p})\n` +
+        `개인리그 마이너  ${indvMinor.w}승 ${indvMinor.l}패  (승률 ${indvMinor.p})\n` +
+        `월드 챔피언십  ${indvWorlz.w}승 ${indvWorlz.l}패  (승률 ${indvWorlz.p})`;
+
+      const teamWith = (keywords) =>
+        totalWL(r => isTeam(r) && includesAny(r.중요도, keywords));
+
+      const wcOrPo = teamWith(['와일드카드','플레이오프']);
+      const finals = teamWith(['결승']);
+
+      const indvByImp = (imp) =>
+        totalWL(r => isIndv(r) && (r.중요도 === imp));
+
+      const indvQF = indvByImp('8강');
+      const indvSF = indvByImp('4강');
+      const indvF  = indvByImp('결승');
+      const teamWinnerStays = totalWL(r => isTeam(r) && r.진행 === '승자연전');
+      const teamEntry       = totalWL(r => isTeam(r) && r.진행 === '엔트리');
+
+      const rightHTML =
+        `팀리그(승자연전)  ${teamWinnerStays.w}승 ${teamWinnerStays.l}패  (승률 ${teamWinnerStays.p})\n` +
+        `팀리그(엔트리)    ${teamEntry.w}승 ${teamEntry.l}패  (승률 ${teamEntry.p})\n` +
+        `팀리그(와일드카드/플레이오프)  ${wcOrPo.w}승 ${wcOrPo.l}패  (승률 ${wcOrPo.p})\n` +
+        `팀리그(결승)                    ${finals.w}승 ${finals.l}패  (승률 ${finals.p})\n` +
+        `개인리그 8강  ${indvQF.w}승 ${indvQF.l}패  (승률 ${indvQF.p})\n` +
+        `개인리그 4강  ${indvSF.w}승 ${indvSF.l}패  (승률 ${indvSF.p})\n` +
+        `개인리그 결승 ${indvF.w}승 ${indvF.l}패   (승률 ${indvF.p})`;
+
+      displayPhotoWithSides(
+        D,
+        'playerPhotoOutput',
+        `<div class="side-info">${leftHTML}</div>`,
+        `<div class="side-info right">${rightHTML}</div>`
+      );
+
+      // 1. calc 함수를 종족과 성별 두 가지 조건을 받도록 수정
+      const calcRaceAndSex = (leagueFilter, raceValue, sexValue) => {
+        let w=0, l=0;
+        for(const r of rows){
+          if(leagueFilter && !leagueFilter(r)) continue;
+          const youWin = r.winner === D;
+          const oppRace = youWin ? r.lose_종족 : r.win_종족;
+          const oppSex  = youWin ? r.lose_성별 : r.win_성별;
+          
+          // 종족과 성별 조건이 모두 일치하는지 확인 (AND 조건)
+          if(oppRace === raceValue && oppSex === sexValue) {
+            if(youWin) w++; else l++;
+          }
+        }
+        return {w, l, p: pct(w, l)};
+      };
+
+      // 2. 왼쪽 표 데이터 구성 (종족 x 성별 6가지 조합 * 팀/개인 2가지 = 12개 분류)
+      const leftRowsData = [];
+      const races = ['Protoss', 'Terran', 'Zerg'];
+      const sexes = ['남성', '여성'];
+
+      // 팀리그 (6가지)
+      races.forEach(race => {
+        sexes.forEach(sex => {
+          const {w, l, p} = calcRaceAndSex(isTeam, race, sex);
+          // 상대 란에 'Protoss(남성)' 과 같이 표기
+          leftRowsData.push({방식: '팀리그', 상대: `${race}(${sex})`, 승: w, 패: l, 승률: p});
+        });
+      });
+
+      // 개인리그 (6가지)
+      races.forEach(race => {
+        sexes.forEach(sex => {
+          const {w, l, p} = calcRaceAndSex(isIndv, race, sex);
+          leftRowsData.push({방식: '개인리그', 상대: `${race}(${sex})`, 승: w, 패: l, 승률: p});
+        });
+      });
+
+      // 2. 오른쪽 표 데이터 구성 (ACE결정전 및 세트별 전적)
+      const rightRowsData = [];
+      
+      // ACE결정전 (무조건 출력)
+      const aceStats = totalWL(r => r.세트 === 'ACE결정전');
+      rightRowsData.push({방식: '전체', 상대: 'ACE결정전', 승: aceStats.w, 패: aceStats.l, 승률: aceStats.p});
+
+      // 팀리그 각 세트 별 (1set ~ 10set, 전적이 0이어도 모두 출력)
+      for (let i = 1; i <= 10; i++) {
+        const setName = `${i}set`;
+        const setStats = totalWL(r => isTeam(r) && r.세트 === setName);
+        rightRowsData.push({방식: '팀리그', 상대: setName, 승: setStats.w, 패: setStats.l, 승률: setStats.p});
+      }
+
+      // 개인리그 각 세트 별 (끝장전 제외, 1set ~ 9set, 전적이 0이어도 모두 출력)
+      for (let i = 1; i <= 9; i++) {
+        const setName = `${i}set`;
+        const setStats = totalWL(r => isIndv(r) && r.진행 !== '끝장전' && r.세트 === setName);
+        rightRowsData.push({방식: '개인리그', 상대: setName, 승: setStats.w, 패: setStats.l, 승률: setStats.p});
+      }
+
+      // 3. 화면 출력 (DOM 조작)
+      const container = document.getElementById('playerTableOutput');
+      container.innerHTML = '';
+      if(!rows.length){
+        container.innerHTML = '<div>No data available</div>';
+        return;
+      }
+
+      // 중복되는 테이블 생성 로직을 처리해주는 내부 헬퍼 함수
+      function createTableNode(dataList) {
+        const table = document.createElement('table');
+        const headers = ['방식','상대','승','패','승률'];
+        
+        const thead = document.createElement('thead');
+        const hr = document.createElement('tr');
+        headers.forEach(h => {
+          const th = document.createElement('th');
+          th.textContent = h;
+          hr.appendChild(th);
+        });
+        thead.appendChild(hr);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        dataList.forEach(r => {
+          const tr = document.createElement('tr');
+          headers.forEach(h => {
+            const td = document.createElement('td');
+            td.textContent = r[h];
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        return table;
+      }
+
+      // 좌우 배치를 위한 래퍼(Wrapper) 생성
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.gap = '20px'; // 좌우 표 사이의 간격 (원하는 만큼 조절 가능)
+      wrapper.style.width = '100%';
+
+      // 왼쪽 영역 
+      const leftDiv = document.createElement('div');
+      leftDiv.style.flex = '1'; // 화면의 절반 차지
+      leftDiv.appendChild(createTableNode(leftRowsData));
+
+      // 오른쪽 영역
+      const rightDiv = document.createElement('div');
+      rightDiv.style.flex = '1'; // 화면의 절반 차지
+      rightDiv.appendChild(createTableNode(rightRowsData));
+
+      // 래퍼에 좌우 영역 담고, 컨테이너에 최종 추가
+      wrapper.appendChild(leftDiv);
+      wrapper.appendChild(rightDiv);
+      container.appendChild(wrapper);
+    }
+
+    function PlayerLastTen(E){
+      const filtered = mainDataField.filter(r=>r.winner===E||r.loser===E);
+      const lastTen  = filtered.slice(-10);
+
+      let w=0; lastTen.forEach(r=>{ if(r.winner===E) w++; });
+      const l = lastTen.length - w;
+      const leftHTML = `<div class="big-num">${w}승 ${l}패</div>`;
+
+      const mood = (()=>{
+        if(w<=1) return 'very down';
+        if(w<=3) return 'down';
+        if(w<=6) return 'normal';
+        if(w<=8) return 'good';
+        return 'very good';
+      })();
+      const moodFile = {
+        'very down':'very down.jpg',
+        'down':'down.jpg',
+        'normal':'normal.jpg',
+        'good':'good.jpg',
+        'very good':'very good.jpg'
+      }[mood];
+      const rightHTML = iconFolder[moodFile]
+        ? `<img src="${iconFolder[moodFile]}" alt="${mood}" style="width:54px;height:54px;object-fit:contain; border-radius:12px; border:1px solid #eee"/>`
+        : `<div>${mood}</div>`;
+
+      displayPhotoWithSides(E,'lastTenPhotoOutput',leftHTML,rightHTML);
+      displayTable(lastTen,'lastTenTableOutput');
+    }
+
+    function MapAndPlayer(F,G){
+      const rows = mainDataField.filter(r=>(r.winner===F||r.loser===F) && r.map===G);
+      displayTable(rows,'mapPlayerTableOutput');
+
+      let w=0; for(const r of rows){ if(r.winner===F) w++; }
+      const l = rows.length - w;
+      const rate = pct(w,l);
+
+      const recByRace = raceVal=>{
+        let ww=0,ll=0;
+        for(const r of rows){
+          const youWin=r.winner===F;
+          const oppRace = youWin ? r.lose_종족 : r.win_종족;
+          if(oppRace!==raceVal) continue;
+          if(youWin) ww++; else ll++;
+        }
+        return `${ww}승 ${ll}패`;
+      };
+
+      const leftText =
+`총 전적  ${w}승 ${l}패  (승률 ${rate})
+Protoss 상대  ${recByRace('Protoss')}
+Terran  상대  ${recByRace('Terran')}
+Zerg    상대  ${recByRace('Zerg')}`;
+
+      const recBySex = sexVal=>{
+        let ww=0,ll=0;
+        for(const r of rows){
+          const youWin=r.winner===F;
+          const oppSex= youWin ? r.lose_성별 : r.win_성별;
+          if(oppSex!==sexVal) continue;
+          if(youWin) ww++; else ll++;
+        }
+        return `${ww}승 ${ll}패`;
+      };
+
+      const recByLeague = (checker)=>{
+        let ww=0,ll=0;
+        for(const r of rows){
+          if(!checker(r)) continue;
+          if(r.winner===F) ww++; else ll++;
+        }
+        return `${ww}승 ${ll}패`;
+      };
+      const isTeam = r => (r.방식||'').includes('팀');
+      const isIndv = r => (r.방식||'').includes('개인');
+
+      const rightText =
+`남성 상대  ${recBySex('남성')}
+여성 상대  ${recBySex('여성')}
+팀리그      ${recByLeague(isTeam)}
+개인리그    ${recByLeague(isIndv)}`;
+
+      displayPhotoWithSides(F,'mapPlayerPhotoOutput',
+        `<div class="side-info">${leftText}</div>`,
+        `<div class="side-info right">${rightText}</div>`);
+    }
+
+    // ---------------- (3) WinningProbability ----------------
+function renderWinningProbability(A,B,mapName){
+  const out = document.getElementById('winProbOutput');
+  out.innerHTML = '';
+  out.classList.add('photo-container');
+
+  if(!eloResult || !eloResult.ratings){
+    out.innerHTML = '<div class="muted">Elo가 아직 계산되지 않았습니다. 먼저 INU 폴더를 로드해주세요.</div>';
+    return;
+  }
+
+  // ---------- helpers (로컬) ----------
+  const clamp01 = (x)=> Math.max(0.001, Math.min(0.999, x));
+  const sigmoid = (x)=> 1/(1+Math.exp(-x));
+  const logit   = (p)=> { const pp = clamp01(p); return Math.log(pp/(1-pp)); };
+  const laplaceP = (w,l)=> (w + 1) / (w + l + 2); // Beta(1,1) smoothing
+  const conf = (n, k)=> (n>0 ? (n/(n+k)) : 0);
+
+  const getTraits = (p)=>{
+    for(const r of mainDataField){
+      if(r.winner===p) return { race:r.win_종족, sex:r.win_성별 };
+      if(r.loser ===p) return { race:r.lose_종족, sex:r.lose_성별 };
+    }
+    return { race:'Unknown', sex:'Unknown' };
+  };
+
+  const recHeadToHeadAll = (pa,pb)=>{
+    let aW=0,bW=0;
+    for(const r of mainDataField){
+      if(r.winner===pa && r.loser===pb) aW++;
+      else if(r.winner===pb && r.loser===pa) bW++;
+    }
+    return {aW,bW,n:aW+bW};
+  };
+
+  const recHeadToHeadOnMap = (pa,pb,map)=>{
+    let aW=0,bW=0;
+    for(const r of mainDataField){
+      if(r.map!==map) continue;
+      if(r.winner===pa && r.loser===pb) aW++;
+      else if(r.winner===pb && r.loser===pa) bW++;
+    }
+    return {aW,bW,n:aW+bW};
+  };
+
+  const recPlayerOnMap = (p,map)=>{
+    let w=0,l=0;
+    for(const r of mainDataField){
+      if(r.map!==map) continue;
+      if(r.winner===p) w++;
+      else if(r.loser===p) l++;
+    }
+    return {w,l,n:w+l};
+  };
+
+  const recMapRaceMatchup = (map, raceA, raceB)=>{
+    // "raceA vs raceB" 관점에서 raceA가 이긴 수(w) / 진 수(l)
+    if(!map || raceA==='Unknown' || raceB==='Unknown' || raceA===raceB) return {w:0,l:0,n:0};
+    let w=0,l=0;
+    for(const r of mainDataField){
+      if(r.map!==map) continue;
+      if(r.win_종족===raceA && r.lose_종족===raceB) w++;
+      else if(r.win_종족===raceB && r.lose_종족===raceA) l++;
+    }
+    return {w,l,n:w+l};
+  };
+
+  const recMapSexMatchup = (map, sexA, sexB)=>{
+    if(!map || sexA==='Unknown' || sexB==='Unknown' || sexA===sexB) return {w:0,l:0,n:0};
+    let w=0,l=0;
+    for(const r of mainDataField){
+      if(r.map!==map) continue;
+      if(r.win_성별===sexA && r.lose_성별===sexB) w++;
+      else if(r.win_성별===sexB && r.lose_성별===sexA) l++;
+    }
+    return {w,l,n:w+l};
+  };
+
+  const recPlayerVsOppRace = (p, oppRace)=>{
+    if(oppRace==='Unknown') return {w:0,l:0,n:0};
+    let w=0,l=0;
+    for(const r of mainDataField){
+      if(r.winner!==p && r.loser!==p) continue;
+      const youWin = (r.winner===p);
+      const opp = youWin ? r.lose_종족 : r.win_종족;
+      if(opp!==oppRace) continue;
+      if(youWin) w++; else l++;
+    }
+    return {w,l,n:w+l};
+  };
+
+  const recPlayerVsOppSex = (p, oppSex)=>{
+    if(oppSex==='Unknown') return {w:0,l:0,n:0};
+    let w=0,l=0;
+    for(const r of mainDataField){
+      if(r.winner!==p && r.loser!==p) continue;
+      const youWin = (r.winner===p);
+      const opp = youWin ? r.lose_성별 : r.win_성별;
+      if(opp!==oppSex) continue;
+      if(youWin) w++; else l++;
+    }
+    return {w,l,n:w+l};
+  };
+
+  const recRecent = (p, nGames=10)=>{
+    const filtered = mainDataField.filter(r=>r.winner===p||r.loser===p);
+    const lastN = filtered.slice(-nGames);
+    let w=0; for(const r of lastN){ if(r.winner===p) w++; }
+    const l = lastN.length - w;
+    return {w,l,n:lastN.length};
+  };
+
+  // ---------- base: Elo ----------
+  const Ra = eloResult.ratings.has(A) ? eloResult.ratings.get(A) : 1500;
+  const Rb = eloResult.ratings.has(B) ? eloResult.ratings.get(B) : 1500;
+
+  const pEloA = 1 / (1 + Math.pow(10, (Rb - Ra) / 400)); // A 승리 확률 (Elo 기대승률)
+  let logitFinal = logit(pEloA);
+
+  // ---------- features ----------
+  const traitsA = getTraits(A);
+  const traitsB = getTraits(B);
+
+  const parts = [];
+  const addPart = (label, baseW, n, k, component, detail)=>{
+    const wEff = baseW * conf(n, k);
+    const delta = wEff * component;
+    logitFinal += delta;
+    parts.push({label, n, wEff, delta, detail});
+  };
+
+  // (1) 상대전적(전체) — 있으면 반영
+  const h2hAll = recHeadToHeadAll(A,B);
+  if(h2hAll.n>0){
+    const p = laplaceP(h2hAll.aW, h2hAll.bW);
+    addPart('상대전적(전체)', 0.90, h2hAll.n, 8, logit(p),
+      `${A} ${h2hAll.aW} : ${h2hAll.bW} ${B} (p≈${(p*100).toFixed(1)}%)`);
+  }
+
+  // (2) 각 선수의 해당 맵 전적 — 있으면 반영
+  const mapA = recPlayerOnMap(A, mapName);
+  const mapB = recPlayerOnMap(B, mapName);
+  if(mapA.n + mapB.n > 0){
+    const pAmap = (mapA.n>0) ? laplaceP(mapA.w, mapA.l) : 0.5;
+    const pBmap = (mapB.n>0) ? laplaceP(mapB.w, mapB.l) : 0.5;
+    addPart('맵 전적(개인)', 0.55, mapA.n + mapB.n, 20, (logit(pAmap) - logit(pBmap)),
+      `${A} ${mapA.w}승${mapA.l}패, ${B} ${mapB.w}승${mapB.l}패`);
+  }
+
+  // (3) 해당 맵의 데이터(종족별) — A종족 vs B종족 상성(맵) 반영
+  const mapRace = recMapRaceMatchup(mapName, traitsA.race, traitsB.race);
+  if(mapRace.n>0){
+    const p = laplaceP(mapRace.w, mapRace.l);
+    addPart('맵 종족 상성', 0.35, mapRace.n, 30, logit(p),
+      `${traitsA.race} vs ${traitsB.race} on ${mapName}: ${mapRace.w} : ${mapRace.l} (p≈${(p*100).toFixed(1)}%)`);
+  }
+
+  // (4) 해당 맵의 데이터(성별) — A성별 vs B성별 상성(맵) 반영
+  const mapSex = recMapSexMatchup(mapName, traitsA.sex, traitsB.sex);
+  if(mapSex.n>0){
+    const p = laplaceP(mapSex.w, mapSex.l);
+    addPart('맵 성별 상성', 0.20, mapSex.n, 30, logit(p),
+      `${traitsA.sex} vs ${traitsB.sex} on ${mapName}: ${mapSex.w} : ${mapSex.l} (p≈${(p*100).toFixed(1)}%)`);
+  }
+
+  // (5) 각 선수의 종족별 데이터 — "상대 종족" 기준 성적 반영
+  const aVsRace = recPlayerVsOppRace(A, traitsB.race);
+  const bVsRace = recPlayerVsOppRace(B, traitsA.race);
+  if(aVsRace.n + bVsRace.n > 0){
+    const pA = (aVsRace.n>0) ? laplaceP(aVsRace.w, aVsRace.l) : 0.5;
+    const pB = (bVsRace.n>0) ? laplaceP(bVsRace.w, bVsRace.l) : 0.5;
+    addPart('선수 종족 상대 성적', 0.30, aVsRace.n + bVsRace.n, 25, (logit(pA) - logit(pB)),
+      `${A} vs ${traitsB.race}: ${aVsRace.w}승${aVsRace.l}패 / ${B} vs ${traitsA.race}: ${bVsRace.w}승${bVsRace.l}패`);
+  }
+
+  // (6) 각 선수의 성별 데이터 — "상대 성별" 기준 성적 반영
+  const aVsSex = recPlayerVsOppSex(A, traitsB.sex);
+  const bVsSex = recPlayerVsOppSex(B, traitsA.sex);
+  if(aVsSex.n + bVsSex.n > 0){
+    const pA = (aVsSex.n>0) ? laplaceP(aVsSex.w, aVsSex.l) : 0.5;
+    const pB = (bVsSex.n>0) ? laplaceP(bVsSex.w, bVsSex.l) : 0.5;
+    addPart('선수 성별 상대 성적', 0.15, aVsSex.n + bVsSex.n, 25, (logit(pA) - logit(pB)),
+      `${A} vs ${traitsB.sex}: ${aVsSex.w}승${aVsSex.l}패 / ${B} vs ${traitsA.sex}: ${bVsSex.w}승${bVsSex.l}패`);
+  }
+
+  // (7) 최근 10경기 — 폼 반영
+  const rA = recRecent(A, 10);
+  const rB = recRecent(B, 10);
+  if(rA.n + rB.n > 0){
+    const pA = (rA.n>0) ? laplaceP(rA.w, rA.l) : 0.5;
+    const pB = (rB.n>0) ? laplaceP(rB.w, rB.l) : 0.5;
+    addPart('최근 10경기', 0.40, rA.n + rB.n, 8, (logit(pA) - logit(pB)),
+      `${A} ${rA.w}승${rA.l}패 / ${B} ${rB.w}승${rB.l}패`);
+  }
+
+  // ---------- final probability ----------
+  const pFinalA = clamp01(sigmoid(logitFinal));
+  const pFinalB = 1 - pFinalA;
+
+  // ---------- UI ----------
+  const rankA = eloResult.rank.get(A) ?? '-';
+  const rankB = eloResult.rank.get(B) ?? '-';
+  const eloA  = (Math.round(Ra*10)/10).toFixed(1);
+  const eloB  = (Math.round(Rb*10)/10).toFixed(1);
+
+  // 맵 기준 상대전적(표시용)
+  const h2hMap = recHeadToHeadOnMap(A,B,mapName);
+  const h2hMapText = h2hMap.n
+    ? `해당 맵 상대전적: ${A} ${h2hMap.aW} : ${h2hMap.bW} ${B}`
+    : '해당 맵 상대전적: 데이터 없음';
+
+  const winner = pFinalA >= 0.5 ? A : B;
+  const winPct = (Math.max(pFinalA,pFinalB)*100).toFixed(1);
+
+  const card = (name, elo, rank, traits) => {
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    displayPhoto(name, wrap, true);
+
+    const info = document.createElement('div');
+    info.style.whiteSpace = 'pre-line';
+    info.innerHTML = `<div style="font-weight:bold">${name}</div>` +
+                     `Elo ${elo} (순위 #${rank})<br/>` +
+                     `<span class="muted">${traits.race} / ${traits.sex}</span>`;
+    wrap.appendChild(info);
+    return wrap;
+  };
+
+  const breakdown = (() => {
+    if(!parts.length) return '<div class="muted">추가 반영 데이터 없음 (Elo만 사용)</div>';
+    const rows = parts
+      .sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta))
+      .map(p=>{
+        const sign = p.delta>=0 ? '+' : '−';
+        const mag  = Math.abs(p.delta).toFixed(3);
+        const wEff = (p.wEff||0).toFixed(2);
+        const detail = p.detail ? `<div class="help" style="margin-top:2px;">${p.detail}</div>` : '';
+        return `<div style="margin-top:6px;">
+                  <b>${p.label}</b> <span class="muted">(n=${p.n}, 가중=${wEff})</span>
+                  <div class="muted">기여도: ${sign}${mag} (log-odds)</div>
+                  ${detail}
+                </div>`;
+      }).join('');
+    return rows;
+  })();
+
+  const center = document.createElement('div');
+  center.className = 'match-stats';
+  center.innerHTML =
+    `<div class="pill">${mapName}</div><br/>
+     <div style="margin-top:6px;"><b>예상 승자: ${winner}</b> (${winPct}%)</div>
+     <div style="margin-top:6px;">
+       <b>최종</b> — ${A}: ${(pFinalA*100).toFixed(1)}% / ${B}: ${(pFinalB*100).toFixed(1)}%<br/>
+       <span class="muted">기본(Elo)</span> — ${A}: ${(pEloA*100).toFixed(1)}% / ${B}: ${((1-pEloA)*100).toFixed(1)}%
+     </div>
+     <div class="help" style="margin-top:8px;">${h2hMapText}</div>
+     <div style="margin-top:10px; text-align:left;">
+       <div style="font-weight:bold">반영 내역</div>
+       ${breakdown}
+     </div>`;
+
+  out.appendChild(card(A, eloA, rankA, traitsA));
+  out.appendChild(center);
+  out.appendChild(card(B, eloB, rankB, traitsB));
+}
+
+    // ---------------- 실행 버튼 핸들러 ----------------
+    function ensureReady(){
+      if(!mainDataField.length){
+        alert('먼저 INU 폴더를 로드해주세요.');
+        return false;
+      }
+      return true;
+    }
+
+    function runSangDaeJunJuk(){
+      if(!ensureReady()) return;
+      const A=normalize(document.getElementById('sangA').value);
+      const B=normalize(document.getElementById('sangB').value);
+      if(!A||!B){ alert('Please enter both player names.'); return; }
+      SangDaeJunJuk(A,B);
+    }
+    function runMapData(){
+      if(!ensureReady()) return;
+      const map=normalize(document.getElementById('mapName').value);
+      if(!map){ alert('Please enter a map name.'); return; }
+      MapData(map);
+    }
+    function runPlayerData(){
+      if(!ensureReady()) return;
+      const name=normalize(document.getElementById('playerName').value);
+      if(!name){ alert('Please enter a player name.'); return; }
+      PlayerData(name);
+    }
+    function runPlayerLastTen(){
+      if(!ensureReady()) return;
+      const name=normalize(document.getElementById('lastTenName').value);
+      if(!name){ alert('Please enter a player name.'); return; }
+      PlayerLastTen(name);
+    }
+    function runMapAndPlayer(){
+      if(!ensureReady()) return;
+      const name=normalize(document.getElementById('mapPlayerName').value);
+      const map=normalize(document.getElementById('mapPlayerMap').value);
+      if(!name||!map){ alert('Please enter both player name and map name.'); return; }
+      MapAndPlayer(name,map);
+    }
+    function runWinningProbability(){
+      if(!ensureReady()) return;
+      const A=normalize(document.getElementById('winA').value);
+      const B=normalize(document.getElementById('winB').value);
+      const map=normalize(document.getElementById('winMap').value);
+      if(!A||!B||!map){ alert('Player A, Player B, Map Name을 모두 입력해주세요.'); return; }
+      renderWinningProbability(A,B,map);
+    }
+
+    // ---------------- 이벤트 바인딩 ----------------
+    document.getElementById('inuFolder')?.addEventListener('change', autoFromINU);
+    document.getElementById('levelWeightFile')?.addEventListener('change', onWeightChange);
+    document.getElementById('stageWeightFile')?.addEventListener('change', onWeightChange);
+  </script>
+</body>
+</html>
